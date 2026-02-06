@@ -15,7 +15,7 @@ Right/Left CBF Data (h, Lfh, Lf_2_h, Lg_Lf_h, u_opt)
 # -----------------------------
 # Load the logs
 # -----------------------------
-data = np.load("/home/ubuntu/ros_ws/src/safe_controller/safe_controller/pure_sim_replicate.npz", allow_pickle=True)
+data = np.load("/home/ubuntu/ros_ws/src/safe_controller/safe_controller/last_run.npz", allow_pickle=True)
 
 P_list = data["P"]            # shape (T, 4, 4)
 x_hat_list = data["x_hat"]    # shape (T, n)
@@ -62,10 +62,35 @@ fig1 = plt.figure(figsize=(12, 16), constrained_layout=True)
 
 # 1. x_hat trajectory (x vs y)
 ax1 = fig1.add_subplot(4, 1, 1) 
-x_vals = x_hat_list[:, 0]
-y_vals = x_hat_list[:, 1]
-ax1.plot(x_vals, y_vals, marker='o', markersize=2, linewidth=1)
-ax1.plot(gt_x, gt_y, color="black", linestyle="--", linewidth=2, label="gt")
+
+y_hat = x_hat_list[:, 1]
+theta_hat = x_hat_list[:, 3]
+
+# Direction components
+u = np.cos(theta_hat)
+v = np.sin(theta_hat)
+
+arrow_len = 2.5 # idk what scale this is
+
+# Convert to numpy if needed
+
+idx = slice(None, None, 100)  # every 5th arrow
+
+ax1.quiver(
+    gt_x[idx], y_hat[idx],
+    arrow_len * u[idx], arrow_len * v[idx],
+    angles="xy",
+    scale_units="xy",
+    scale=1.0,     # adjust arrow length
+    width=0.0015,
+    headwidth=3,        # default ~3
+    headlength=5,       # default ~5
+    color="tab:blue",
+    label="heading"
+)
+
+# Ground truth path for reference
+ax1.plot(gt_x, gt_y, "k*", linewidth=2, label="gt")
 
 ax1.set_title("State Trajectory (x vs y)")
 ax1.set_ylabel("y")
@@ -74,10 +99,12 @@ ax1.grid(True)
 
 # 2. Diagonal elements of P
 ax2 = fig1.add_subplot(4, 1, 2)
-ax2.plot(time, P_list[:, 0, 0], label="P[0,0]")
-ax2.plot(time, P_list[:, 1, 1], label="P[1,1]")
-ax2.plot(time, P_list[:, 2, 2], label="P[2,2]")
-ax2.plot(time, P_list[:, 3, 3], label="P[3,3]")
+
+state_dim = P_list.shape[1]
+
+for i in range(state_dim):
+    ax2.plot(time, P_list[:, i, i], label=f"P[{i},{i}]")
+
 ax2.set_title("Diagonal Elements of Covariance Matrix P")
 ax2.set_ylabel("Variance")
 ax2.legend()
@@ -256,57 +283,57 @@ ax_u.legend()
 # #     Right HOCBF | h, h_dot, h_ddot | u_opt (v, ω)
 # # ============================================================
 
-T = len(right_lglfh)
-time = np.arange(T)
+# T = len(right_lglfh)
+# time = np.arange(T)
 
-fig6, axes = plt.subplots(3, 1, figsize=(12, 12), sharex=True)
+# fig6, axes = plt.subplots(3, 1, figsize=(12, 12), sharex=True)
 
-# Unpack axes for clarity
-ax_hocbf   = axes[0]   # Top
-ax_uopt    = axes[1]   # Middle
-ax_horders = axes[2]   # Bottom
+# # Unpack axes for clarity
+# ax_hocbf   = axes[0]   # Top
+# ax_uopt    = axes[1]   # Middle
+# ax_horders = axes[2]   # Bottom
 
-# ------------------------------------------------------------
-# Subplot 1 — Right HOCBF inequality
-# ------------------------------------------------------------
-right_LgLf_u = -np.einsum("ij,ij->i", right_lglfh, u_opt_list)
+# # ------------------------------------------------------------
+# # Subplot 1 — Right HOCBF inequality
+# # ------------------------------------------------------------
+# right_LgLf_u = -np.einsum("ij,ij->i", right_lglfh, u_opt_list)
 
-ax_hocbf.plot(time, right_LgLf_u, label="LHS: -L_g L_f h · u")
-ax_hocbf.plot(time, right_rhs, "--", label="RHS")
+# ax_hocbf.plot(time, right_LgLf_u, label="LHS: -L_g L_f h · u")
+# ax_hocbf.plot(time, right_rhs, "--", label="RHS")
 
-ax_hocbf.set_ylabel("HOCBF Inequality")
-ax_hocbf.set_title("Right HOCBF:  -L_g L_f h · u  ≤  RHS")
-ax_hocbf.grid(True)
-ax_hocbf.legend()
+# ax_hocbf.set_ylabel("HOCBF Inequality")
+# ax_hocbf.set_title("Right HOCBF:  -L_g L_f h · u  ≤  RHS")
+# ax_hocbf.grid(True)
+# ax_hocbf.legend()
 
-# ------------------------------------------------------------
-# Subplot 2 — u_opt (v, ω)
-# ------------------------------------------------------------
-ax_uopt.plot(time_ctrl, u_opt_list[:, 0], label="velocity (v)", color="red")
-ax_uopt.plot(time_ctrl, u_opt_list[:, 1], label="heading (ω)",  color="purple")
+# # ------------------------------------------------------------
+# # Subplot 2 — u_opt (v, ω)
+# # ------------------------------------------------------------
+# ax_uopt.plot(time_ctrl, u_opt_list[:, 0], label="velocity (v)", color="red")
+# ax_uopt.plot(time_ctrl, u_opt_list[:, 1], label="heading (ω)",  color="purple")
 
-ax_uopt.set_ylabel("Control Input")
-ax_uopt.set_xlabel("Time Step")
-ax_uopt.set_title("Optimal Control Inputs u = [v, ω]")
-ax_uopt.grid(True)
-ax_uopt.legend()
+# ax_uopt.set_ylabel("Control Input")
+# ax_uopt.set_xlabel("Time Step")
+# ax_uopt.set_title("Optimal Control Inputs u = [v, ω]")
+# ax_uopt.grid(True)
+# ax_uopt.legend()
 
-# ------------------------------------------------------------
-# Subplot 3 — Right h, h_dot, h_ddot
-# ------------------------------------------------------------
-right_h      = np.array(cbf_right_list)
-right_h_dot  = np.array(right_l_f_h)
-right_h_ddot = right_l_f_2_h.squeeze() + np.einsum("ij,ij->i", right_lglfh, u_opt_list)
+# # ------------------------------------------------------------
+# # Subplot 3 — Right h, h_dot, h_ddot
+# # ------------------------------------------------------------
+# right_h      = np.array(cbf_right_list)
+# right_h_dot  = np.array(right_l_f_h)
+# right_h_ddot = right_l_f_2_h.squeeze() + np.einsum("ij,ij->i", right_lglfh, u_opt_list)
 
-ax_horders.plot(time, right_h,      label="h")
-# ax_horders.plot(time, right_h_dot,  label="ḣ")
-ax_horders.plot(time, right_h_ddot, label="ḧ")
+# ax_horders.plot(time, right_h,      label="h")
+# # ax_horders.plot(time, right_h_dot,  label="ḣ")
+# ax_horders.plot(time, right_h_ddot, label="ḧ")
 
-ax_horders.set_ylabel("CBF Value")
-ax_horders.set_xlabel("Time Step")
-ax_horders.set_title("Right CBF: h, ḣ, ḧ")
-ax_horders.grid(True)
-ax_horders.legend()
+# ax_horders.set_ylabel("CBF Value")
+# ax_horders.set_xlabel("Time Step")
+# ax_horders.set_title("Right CBF: h, ḣ, ḧ")
+# ax_horders.grid(True)
+# ax_horders.legend()
 
 # fig6.tight_layout()
 
@@ -315,103 +342,125 @@ ax_horders.legend()
 #       Compare ω = u_opt[:,1]  vs  -RHS / LgLfh[:,1]
 # ============================================================
 
-T = len(right_lglfh)
-time = np.arange(T)
+# T = len(right_lglfh)
+# time = np.arange(T)
 
-# Extract the second control input (ω)
-u2 = u_opt_list[:, 1]
+# # Extract the second control input (ω)
+# u2 = u_opt_list[:, 1]
 
-# Extract the second coefficient of Lg_Lf_h for the right CBF
-LgLfh_right_ang = right_lglfh[:, 1]
+# # Extract the second coefficient of Lg_Lf_h for the right CBF
+# LgLfh_right_ang = right_lglfh[:, 1]
 
-# Compute the HOCBF-implied upper bound on u2
-hocbf_bound = -right_rhs.squeeze() / LgLfh_right_ang   # elementwise division
+# # Compute the HOCBF-implied upper bound on u2
+# hocbf_bound = -right_rhs.squeeze() / LgLfh_right_ang   # elementwise division
 
-# Create 2-subplot figure
-fig7, axes7 = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
+# # Create 2-subplot figure
+# fig7, axes7 = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
 
-# -----------------------------
-# Subplot 1 — Existing ω plot
-# -----------------------------
-ax7 = axes7[0]
+# # -----------------------------
+# # Subplot 1 — Existing ω plot
+# # -----------------------------
+# ax7 = axes7[0]
 
-MAX_ANGULAR = 10.0
-u2_clipped = np.clip(u2, -MAX_ANGULAR, MAX_ANGULAR)
+# MAX_ANGULAR = 10.0
+# u2_clipped = np.clip(u2, -MAX_ANGULAR, MAX_ANGULAR)
 
-ax7.plot(time, u2, label="u_opt ω (heading)", color="red")
-ax7.plot(time, hocbf_bound, label="-RHS / LgLf_h[1] (bound)", linestyle="--", color="gray", alpha=0.4)
+# ax7.plot(time, u2, label="u_opt ω (heading)", color="red")
+# ax7.plot(time, hocbf_bound, label="-RHS / LgLf_h[1] (bound)", linestyle="--", color="gray", alpha=0.4)
 
-ax7.set_title("Figure 7: Heading Control vs HOCBF-implied Bound")
-ax7.set_ylabel("ω (rad/s)")
-ax7.set_ylim(-MAX_ANGULAR - 5, MAX_ANGULAR + 5)
-ax7.grid(True)
-ax7.legend()
+# ax7.set_title("Figure 7: Heading Control vs HOCBF-implied Bound")
+# ax7.set_ylabel("ω (rad/s)")
+# ax7.set_ylim(-MAX_ANGULAR - 5, MAX_ANGULAR + 5)
+# ax7.grid(True)
+# ax7.legend()
 
-# -----------------------------
-# Subplot 2 — alpha-c1-c2 terms + Lf^2 h
-# -----------------------------
-ax_terms = axes7[1]
+# # -----------------------------
+# # Subplot 2 — alpha-c1-c2 terms + Lf^2 h
+# # -----------------------------
+# ax_terms = axes7[1]
 
-alpha = 50.0
-roots = np.array([-0.75]) # Manually select root to be in left half plane
-coeff = alpha*np.poly(roots)
+# alpha = 50.0
+# roots = np.array([-0.75]) # Manually select root to be in left half plane
+# coeff = alpha*np.poly(roots)
 
-h_ddot  = right_l_f_2_h.squeeze()
+# h_ddot  = right_l_f_2_h.squeeze()
 
-term_c1 = -alpha * coeff[0] * right_l_f_h
-term_c2 = -alpha * coeff[1] * cbf_right_list
+# term_c1 = -alpha * coeff[0] * right_l_f_h
+# term_c2 = -alpha * coeff[1] * cbf_right_list
 
-ax_terms.plot(time, term_c1, label="-α c₁ ḣ", color="blue")
-ax_terms.plot(time, term_c2, label="-α c₂ h", color="green")
-ax_terms.plot(time, -right_l_f_2_h, label="-L_f² h", color="black")
-ax_terms.plot(time, LgLfh_right_ang, label="LgLf_h [1] (ang)")
-ax_terms.plot(time, right_rhs, label="rhs")
+# ax_terms.plot(time, term_c1, label="-α c₁ ḣ", color="blue")
+# ax_terms.plot(time, term_c2, label="-α c₂ h", color="green")
+# ax_terms.plot(time, -right_l_f_2_h, label="-L_f² h", color="black")
+# ax_terms.plot(time, LgLfh_right_ang, label="LgLf_h [1] (ang)")
+# ax_terms.plot(time, right_rhs, label="rhs")
 
-ax_terms.set_title("Right CBF Higher-Order Terms")
-ax_terms.set_ylabel("Value")
-ax_terms.set_xlabel("Time Step")
-# ax_terms.set_ylim(-1.2, 0.8)
-ax_terms.grid(True)
-ax_terms.legend()
+# ax_terms.set_title("Right CBF Higher-Order Terms")
+# ax_terms.set_ylabel("Value")
+# ax_terms.set_xlabel("Time Step")
+# # ax_terms.set_ylim(-1.2, 0.8)
+# ax_terms.grid(True)
+# ax_terms.legend()
 
-### New figure
+# ### New figure
 
-fig8, axes = plt.subplots(5, 1, figsize=(12, 12), sharex=True)
+# fig8, axes = plt.subplots(5, 1, figsize=(12, 12), sharex=True)
 
-ax1, ax2, ax3, ax4, ax5 = axes
+# ax1, ax2, ax3, ax4, ax5 = axes
 
-# 1. u_opt_list[:, 1]  (angular control)
-ax1.plot(time, u_opt_list[:, 1], label="u₂ (ang control)", color='tab:blue')
-ax1.set_ylabel("u₂")
-ax1.grid(True)
-ax1.legend()
+# # 1. u_opt_list[:, 1]  (angular control)
+# ax1.plot(time, u_opt_list[:, 1], label="u₂ (ang control)", color='tab:blue')
+# ax1.set_ylabel("u₂")
+# ax1.grid(True)
+# ax1.legend()
 
-# 2. right_rhs
-ax2.plot(time, right_rhs, label="right RHS", color='tab:orange')
-ax2.set_ylabel("RHS")
-ax2.grid(True)
-ax2.legend()
+# # 2. right_rhs
+# ax2.plot(time, right_rhs, label="right RHS", color='tab:orange')
+# ax2.set_ylabel("RHS")
+# ax2.grid(True)
+# ax2.legend()
 
-# 3. right_h
-ax3.plot(time, right_h, label="h", color='tab:green')
-ax3.set_ylabel("h")
-ax3.grid(True)
-ax3.legend()
+# # 3. right_h
+# ax3.plot(time, right_h, label="h", color='tab:green')
+# ax3.set_ylabel("h")
+# ax3.grid(True)
+# ax3.legend()
 
-# 4. right_h_dot
-ax4.plot(time, right_h_dot, label="ḣ", color='tab:red')
-ax4.set_ylabel("ḣ")
-ax4.grid(True)
-ax4.legend()
+# # 4. right_h_dot
+# ax4.plot(time, right_h_dot, label="ḣ", color='tab:red')
+# ax4.set_ylabel("ḣ")
+# ax4.grid(True)
+# ax4.legend()
 
-# 5. right_h_ddot
-ax5.plot(time, right_h_ddot, label="ḧ", color='tab:purple')
-ax5.set_ylabel("ḧ")
-ax5.set_xlabel("Time Step")
-ax5.grid(True)
-ax5.legend()
+# # 5. right_h_ddot
+# ax5.plot(time, right_h_ddot, label="ḧ", color='tab:purple')
+# ax5.set_ylabel("ḧ")
+# ax5.set_xlabel("Time Step")
+# ax5.grid(True)
+# ax5.legend()
 
-fig8.tight_layout()
+# fig8.tight_layout()
+
+# ============================================================
+#                     FIGURE 
+#                   theta_hat
+# ============================================================
+
+theta_hat = x_hat_list[:, -1]
+v = x_hat_list[:, -2]
+
+plt.figure(figsize=(8, 4))
+plt.plot(time, theta_hat, linewidth=2, label="Theta")
+plt.plot(time, v, linewidth=2, label="V")
+
+plt.xlabel("time")
+plt.ylabel("theta (rad), v")
+plt.title("Estimated heading vs time")
+plt.grid(True)
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
 
 # ============================================================
 #                     SHOW ALL FIGURES

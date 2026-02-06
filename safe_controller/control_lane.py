@@ -16,8 +16,8 @@ TOPIC_ODOM = "/vicon_pose"
 TOPIC_LANE_POSE = "/lane_position"
 TOPIC_CONTROL_STATS = "/control_stats"
 
-MAX_LINEAR = 0.35
-MAX_ANGULAR = 0.175
+MAX_LINEAR = 0.2
+MAX_ANGULAR = 1.0
 U_MAX = np.array([MAX_LINEAR, MAX_ANGULAR])
 
 class Control(Node):
@@ -61,11 +61,12 @@ class Control(Node):
 
         self.wall_y = 24.0 # Lane width (24 in / 0.61 m)
 
-        self.state = jnp.array([0.0, self.wall_y/2, 0.25, 0.0]) # x y v theta
-        self.covariance = jnp.eye(len(self.state)) @ jnp.array([[1.0, 0.0, 0.0, 0.0],
-                                                                [0.0, 1.5, 0.0, 0.0],
-                                                                [0.0, 0.0, 1.0, 0.0],
-                                                                [0.0, 0.0, 0.0, 1.0]])
+        self.state = jnp.array([self.wall_y/2, 0.25, 0.0]) # x y v theta
+        self.covariance = jnp.array([
+                                    [0.1, 0.0, 0.0],
+                                    [0.0, 0.1, 0.0],
+                                    [0.0, 0.0, 0.1],
+                                ])
         self.state_initialized = False
         self.stepper_initialized = False
 
@@ -183,7 +184,7 @@ class Control(Node):
 
         if self.stepper_initialized:
             self.P_list.append(self.stepper.estimator.P)
-            self.x_hat_list.append(self.stepper.estimator.x_hat)
+            self.x_hat_list.append(jnp.concatenate([jnp.array([self.x_zeroed]), self.stepper.estimator.x_hat])) # Compare on ground-truth x
             self.K_list.append(self.stepper.estimator.K)
             self.z_obs_list.append(self.z_obs)
             self.state_time_list.append(self.stepper.t)
@@ -216,7 +217,7 @@ class Control(Node):
 
     def save_logs(self):
         np.savez(
-            "/home/ubuntu/ros_ws/src/safe_controller/safe_controller/pure_sim_replicate.npz",
+            "/home/ubuntu/ros_ws/src/safe_controller/safe_controller/last_run.npz",
             P=np.array(self.P_list),
             x_hat=np.array(self.x_hat_list),
             K=np.array(self.K_list),
