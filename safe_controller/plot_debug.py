@@ -55,16 +55,27 @@ plt.close("all")
 # gt_x = gt_x*12
 
 # ============================================================
-#                     FIGURE 1
+#                     FIGURE 0
 # ============================================================
 
-fig1 = plt.figure(figsize=(12, 16), constrained_layout=True)
+fig0 = plt.figure(figsize=(12, 9), constrained_layout=True)
 
-# 1. x_hat trajectory (x vs y)
-ax1 = fig1.add_subplot(4, 1, 1) 
+ax1 = fig0.add_subplot(2, 1, 1)
+
+theta_hat = x_hat_list[:, 3]
+
+# Ground truth path for reference
+ax1.plot(gt_x, gt_y, "k*", linewidth=2, label="gt")
+
+ax1.set_title("State Trajectory (x vs y)")
+ax1.set_ylabel("y")
+ax1.set_xlabel("x")
+ax1.grid(True)
 
 y_hat = x_hat_list[:, 1]
-theta_hat = x_hat_list[:, 3]
+
+ax2 = fig0.add_subplot(2, 1, 2)
+# ax2.plot(time, y_hat, label="y_pred")
 
 # Direction components
 u = np.cos(theta_hat)
@@ -74,10 +85,10 @@ arrow_len = 2.5 # idk what scale this is
 
 # Convert to numpy if needed
 
-idx = slice(None, None, 100)  # every 5th arrow
+idx = slice(None, None, 1000)  # every nth arrow
 
-ax1.quiver(
-    gt_x[idx], y_hat[idx],
+ax2.quiver(
+    time[idx], y_hat[idx],
     arrow_len * u[idx], arrow_len * v[idx],
     angles="xy",
     scale_units="xy",
@@ -89,48 +100,46 @@ ax1.quiver(
     label="heading"
 )
 
-# Ground truth path for reference
-ax1.plot(gt_x, gt_y, "k*", linewidth=2, label="gt")
+# ============================================================
+#                     FIGURE 1
+# ============================================================
 
-ax1.set_title("State Trajectory (x vs y)")
-ax1.set_ylabel("y")
-ax1.set_xlabel("x")
-ax1.grid(True)
+fig1 = plt.figure(figsize=(12, 12), constrained_layout=True)
 
-# 2. Diagonal elements of P
-ax2 = fig1.add_subplot(4, 1, 2)
+# 1. Diagonal elements of P
+ax1 = fig1.add_subplot(3, 1, 1)
 
 state_dim = P_list.shape[1]
 
 for i in range(state_dim):
-    ax2.plot(time, P_list[:, i, i], label=f"P[{i},{i}]")
+    ax1.plot(time, P_list[:, i, i], label=f"P[{i},{i}]")
 
-ax2.set_title("Diagonal Elements of Covariance Matrix P")
-ax2.set_ylabel("Variance")
-ax2.legend()
-ax2.grid(True)
+ax1.set_title("Diagonal Elements of Covariance Matrix P")
+ax1.set_ylabel("Variance")
+ax1.legend()
+ax1.grid(True)
 
-# 3. Kalman Gain K
-ax3 = fig1.add_subplot(4, 1, 3, sharex=ax2)
+# 2. Kalman Gain K
+ax2 = fig1.add_subplot(3, 1, 2, sharex=ax1)
 K_arr = np.array(K_list)
 n, obs_dim = K_arr.shape[1], K_arr.shape[2]
 for i in range(n):
     for j in range(obs_dim):
-        ax3.plot(time, K_arr[:, i, j], label=f"K[{i},{j}]")
-ax3.set_title("Kalman Gain K Elements")
-ax3.set_ylabel("Gain Value")
-ax3.legend(loc="upper right", fontsize=8)
-ax3.grid(True)
+        ax2.plot(time, K_arr[:, i, j], label=f"K[{i},{j}]")
+ax2.set_title("Kalman Gain K Elements")
+ax2.set_ylabel("Gain Value")
+ax2.legend(loc="upper right", fontsize=8)
+ax2.grid(True)
 
-# 4. y_pred vs y_obs
-ax4 = fig1.add_subplot(4, 1, 4, sharex=ax2)
-ax4.plot(time, x_hat_list[:, 1], label="y_pred")
-ax4.plot(time, z_obs_list * scale_factor, label="y_obs")
-ax4.set_title("x_hat[1] vs Observations z_obs")
-ax4.set_xlabel("Time Step")
-ax4.set_ylabel("Value")
-ax4.legend()
-ax4.grid(True)
+# 3. y_pred vs y_obs
+ax3 = fig1.add_subplot(3, 1, 3, sharex=ax1)
+ax3.plot(time, x_hat_list[:, 1], label="y_pred")
+ax3.plot(time, z_obs_list * scale_factor, label="y_obs")
+ax3.set_title("x_hat[1] vs Observations z_obs")
+ax3.set_xlabel("Time Step")
+ax3.set_ylabel("Value")
+ax3.legend()
+ax3.grid(True)
 
 # ============================================================
 #                     FIGURE 2

@@ -16,8 +16,8 @@ TOPIC_ODOM = "/vicon_pose"
 TOPIC_LANE_POSE = "/lane_position"
 TOPIC_CONTROL_STATS = "/control_stats"
 
-MAX_LINEAR = 0.2
-MAX_ANGULAR = 1.0
+MAX_LINEAR = 0.25
+MAX_ANGULAR = 0.25
 U_MAX = np.array([MAX_LINEAR, MAX_ANGULAR])
 
 class Control(Node):
@@ -268,8 +268,8 @@ class Control(Node):
                 # ------------------------------------------
                 # Translate so first sample becomes (0,0)
                 # ------------------------------------------
-                self.x_zeroed = x_rot - self.origin_rotated[0]
-                self.y_zeroed = y_rot - self.origin_rotated[1]
+                self.x_zeroed = x_rot # - self.origin_rotated[0]
+                self.y_zeroed = y_rot # - self.origin_rotated[1]
 
                 # Optional debug print
                 self.get_logger().info(
