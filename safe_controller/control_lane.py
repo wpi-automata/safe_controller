@@ -210,6 +210,10 @@ class Control(Node):
         
         # print(f"[{u_sol[0]: .3f}, {u_sol[1]: .3f}], [Left CBF (wall_y > y)]: {h_2:.3f}, [Right CBF (y > 0)]: {h:.3f}")
 
+        self.get_logger().info(
+                    f"obs = {self.z_obs/24:.3f}, y_pred = {self.stepper.estimator.x_hat[1]:.3f}"
+                )
+
         msg = Float32MultiArray()
         msg.data = [float(u_sol[0]), float(u_sol[1]), float(h_2), float(h)]
 
@@ -272,9 +276,9 @@ class Control(Node):
                 self.y_zeroed = y_rot # - self.origin_rotated[1]
 
                 # Optional debug print
-                self.get_logger().info(
-                    f"Recorded GT: x={self.x_zeroed:.3f}, y={self.y_zeroed:.3f}"
-                )
+                # self.get_logger().info(
+                #     f"Recorded GT: x={self.x_zeroed:.3f}, y={self.y_zeroed:.3f}"
+                # )
 
 
 def main(args=None):
