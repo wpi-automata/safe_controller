@@ -1,44 +1,10 @@
 import matplotlib.pyplot as plt
 from matplotlib.patches import Arc
 import numpy as np
-from gt_to_lane import get_track_sections_dict, transform
-
-def dist(p1, p2):
-    return np.linalg.norm(np.array(p1) - np.array(p2))
-
-def line_intersection(p1, p2, p3, p4, eps=1e-12):
-    """
-    Returns intersection of two infinite lines.
-
-    Line 1: p1 -> p2
-    Line 2: p3 -> p4
-
-    All points are (x, y).
-    Returns (x, y) or None if lines are parallel.
-    """
-
-    x1, y1 = p1
-    x2, y2 = p2
-    x3, y3 = p3
-    x4, y4 = p4
-
-    # Solve using determinant form
-    denom = (x1-x2)*(y3-y4) - (y1-y2)*(x3-x4)
-
-    if abs(denom) < eps:
-        return None  # parallel
-
-    px = ((x1*y2 - y1*x2)*(x3-x4) - (x1-x2)*(x3*y4 - y3*x4)) / denom
-    py = ((x1*y2 - y1*x2)*(y3-y4) - (y1-y2)*(x3*y4 - y3*x4)) / denom
-
-    return (px, py)
+from gt_to_lane import get_track_sections_dict, transform, line_intersection, dist, get_turn_center_radii
 
 def get_turn_arc(turn_dict, angles):
-    center = line_intersection(turn_dict["P_LL"], turn_dict["P_LR"],
-                               turn_dict["P_UL"], turn_dict["P_UR"])
-    
-    inner_radius = dist(center, turn_dict["P_LL"])
-    outer_radius = dist(center, turn_dict["P_LR"])
+    center, inner_radius, outer_radius = get_turn_center_radii(turn_dict)
 
     theta1, theta2 = angles
     

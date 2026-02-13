@@ -1,6 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
+import matplotlib.pyplot as plt
 
 M_TO_IN = 39.37007874015748
 
@@ -85,6 +86,16 @@ def transform(pt):
     y_new = -x_old
     return (x_new, y_new)
 
+def cartesian_to_polar(v):
+    x, y = v
+    r = np.linalg.norm(v)
+    theta = np.arctan2(y, x)   # radians
+    theta = (theta + 2*np.pi) % (2*np.pi) # limit to 0 - 360
+    return r, theta
+
+def dist(p1, p2):
+    return np.linalg.norm(np.array(p1) - np.array(p2))
+
 
 def _dist_point_to_segment(p, a, b) -> float:
     """Euclidean distance from point p to line segment a-b."""
@@ -123,6 +134,13 @@ def _dist_point_to_arc(P, C, r) -> float:
 
     return np.linalg.norm(D)
 
+def section_polygon(sec):
+    """
+    Build a consistent quad polygon from your corner naming.
+    Order: UL -> UR -> LR -> LL
+    """
+    return [sec["P_UL"], sec["P_UR"], sec["P_LR"], sec["P_LL"]]
+
 
 def point_in_poly(pt, poly):
     """
@@ -156,12 +174,79 @@ def point_in_poly(pt, poly):
 
     return inside
 
-def section_polygon(sec):
+def point_in_turn(Point, turn_dict, angles):
     """
-    Build a consistent quad polygon from your corner naming.
-    Order: UL -> UR -> LR -> LL
+    Checks whether given "Point" is inside the turn defined by Center, r_inner, r_outer, angle1, angle2
+
+    Args:
+        Center (Tuple(float, float)): m 
+        Point (Tuple(float, float)): m
+        r_inner (float): m
+        r_outer (float): m
+        angle1 (float): degrees
+        angle2 (float): degrees
+
+    Returns:
+        boolean: True if point is inside, False otherwise
     """
-    return [sec["P_UL"], sec["P_UR"], sec["P_LR"], sec["P_LL"]]
+
+    Center, r_inner, r_outer = get_turn_center_radii(turn_dict)
+
+    inside = False
+
+    Point = np.array(Point)
+    Center = np.array(Center)
+
+    angle1, angle2 = angles
+    
+    angle1 = np.deg2rad(angle1)
+    angle2 = np.deg2rad(angle2)
+
+    # Convert Point to Turn's coordinate frame
+
+    Point_in_turn_frame = Point - Center
+
+    r, theta = cartesian_to_polar(Point_in_turn_frame)
+
+    inside = (r_inner <= r <= r_outer) and (angle1 <= theta <= angle2)
+
+    return inside
+
+def line_intersection(p1, p2, p3, p4, eps=1e-12):
+    """
+    Returns intersection of two infinite lines.
+
+    Line 1: p1 -> p2
+    Line 2: p3 -> p4
+
+    All points are (x, y).
+    Returns (x, y) or None if lines are parallel.
+    """
+
+    x1, y1 = p1
+    x2, y2 = p2
+    x3, y3 = p3
+    x4, y4 = p4
+
+    # Solve using determinant form
+    denom = (x1-x2)*(y3-y4) - (y1-y2)*(x3-x4)
+
+    if abs(denom) < eps:
+        return None  # parallel
+
+    px = ((x1*y2 - y1*x2)*(x3-x4) - (x1-x2)*(x3*y4 - y3*x4)) / denom
+    py = ((x1*y2 - y1*x2)*(y3-y4) - (y1-y2)*(x3*y4 - y3*x4)) / denom
+
+    return (px, py)
+
+def get_turn_center_radii(turn_dict):
+    center = line_intersection(turn_dict["P_LL"], turn_dict["P_LR"],
+                               turn_dict["P_UL"], turn_dict["P_UR"])
+    
+    inner_radius = dist(center, turn_dict["P_LL"])
+    outer_radius = dist(center, turn_dict["P_LR"])
+
+    return center, inner_radius, outer_radius
 
 
 def find_section(pt, sections):
@@ -174,28 +259,65 @@ def find_section(pt, sections):
     Note: some points near boundaries may belong to multiple quads.
           We resolve by checking turns first (T*), then straights.
     """
-    # Priority: turns first, then straights (tweak if you want)
-    order = ["T1", "T2", "T3", "T4", "L1", "L2", "S1", "S2"]
-    for name in order:
-        poly = section_polygon(sections[name])
-        if point_in_poly(pt, poly):
+    # 1) Check turns using sector geometry
+    for turn_name, angles in zip(["T1", "T2", "T3", "T4"], [(270, 360), (0, 90), (90, 180), (180, 270)]):
+        inside = point_in_turn(pt, sections[turn_name], angles)
+        if inside:
+            return turn_name
+
+    # 2) Check straights using polygons
+    for name in ["L1", "L2", "S1", "S2"]:
+        if point_in_poly(pt, section_polygon(sections[name])):
             return name
+        
     return None
 
-sections_dict = get_track_sections_dict()
+def get_in_lane_dist(pt, sections):
 
-sections_tf = {}
-for name, pts in sections_dict.items():
-    sections_tf[name] = {k: transform(v) for k, v in pts.items()}
+    value = np.NaN
 
-print(find_section((3.75, -0.06), sections_tf)) # L1
-print(find_section((6.67, 0.86), sections_tf)) # T1
-print(find_section((6.68, 3.08), sections_tf)) # S1
-print(find_section((6.71, 4.40), sections_tf)) # T2
-print(find_section((1.68, 5.11), sections_tf)) # L2
-print(find_section((-0.83, 4.02), sections_tf)) # T3
-print(find_section((-1.34, 3.26), sections_tf)) # S2
-print(find_section((-0.84, 0.36), sections_tf)) # T4
+    section = find_section(pt, sections)
+
+    if section is not None:
+        if section in ["T1", "T2", "T3", "T4"]:
+            center, _, outer_radius = get_turn_center_radii(sections[section])
+            value = _dist_point_to_arc(pt, center, outer_radius)
+            
+        elif section in ["L1", "L2", "S1", "S2"]:
+            a = sections[section]["P_LR"]
+            b = sections[section]["P_UR"]
+            
+            value = _dist_point_to_segment(pt, a, b)
+
+    return value
+
+def get_y_gt(ground_truth):
+
+    sections_dict = get_track_sections_dict()
+
+    sections_tf = {}
+
+    for name, pts in sections_dict.items():
+        sections_tf[name] = {k: transform(v) for k, v in pts.items()}
+
+    y_gt = np.full(len(ground_truth), np.nan)
+
+    for i, (gt_x, gt_y) in enumerate(ground_truth):
+        y_gt[i] = get_in_lane_dist((gt_x, gt_y), sections_tf)
+
+    return y_gt*M_TO_IN
+
+    # print(find_section((3.75, -0.06), sections_tf)) # L1
+    # print(find_section((6.67, 0.86), sections_tf)) # T1
+    # print(find_section((6.68, 3.08), sections_tf)) # S1
+    # print(find_section((6.71, 4.40), sections_tf)) # T2
+    # print(find_section((1.68, 5.11), sections_tf)) # L2
+    # print(find_section((-0.83, 4.02), sections_tf)) # T3
+    # print(find_section((-1.34, 3.26), sections_tf)) # S2
+    # print(find_section((-0.84, 0.36), sections_tf)) # T4
+
+
+
 
 
 

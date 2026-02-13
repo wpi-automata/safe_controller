@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from gt_to_lane import get_y_gt
 
 """
 This script plots logged data from control_lane, including:
@@ -131,10 +132,11 @@ ax2.set_ylabel("Gain Value")
 ax2.legend(loc="upper right", fontsize=8)
 ax2.grid(True)
 
-# 3. y_pred vs y_obs
+# 3. y_pred vs y_obs vs y_gt
 ax3 = fig1.add_subplot(3, 1, 3, sharex=ax1)
 ax3.plot(time, x_hat_list[:, 1], label="y_pred")
 ax3.plot(time, z_obs_list * scale_factor, label="y_obs")
+ax3.plot(time, get_y_gt(ground_truth), label="y_gt")
 ax3.set_title("x_hat[1] vs Observations z_obs")
 ax3.set_xlabel("Time Step")
 ax3.set_ylabel("Value")
