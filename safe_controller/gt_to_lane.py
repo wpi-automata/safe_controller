@@ -6,178 +6,199 @@ M_TO_IN = 39.37007874015748
 
 Pt = Tuple[float, float]
 
-@dataclass(frozen=True)
-class Section:
-    name: str
-    P_UL: Pt  # Upper Left
-    P_UR: Pt  # Upper Right
-    P_LL: Pt  # Lower Left
-    P_LR: Pt  # Lower Right
-
-    def poly(self) -> List[Pt]:
-        """
-        Polygon corners for point-in-polygon tests.
-        Assumes a “rectangle-like” section:
-          UL -> UR -> LR -> LL
-        """
-        return [self.P_UL, self.P_UR, self.P_LR, self.P_LL]
-
-
-def build_track_sections(
-    *,
-    L1: Dict[str, Pt],
-    L2: Dict[str, Pt],
-    S1: Dict[str, Pt],
-    S2: Dict[str, Pt],
-    T1: Dict[str, Pt],
-    T2: Dict[str, Pt],
-    T3: Dict[str, Pt],
-    T4: Dict[str, Pt],
-) -> List[Section]:
+def get_track_sections_dict() -> dict[str, dict[str, tuple[float, float]]]:
     """
-    Returns all sections with named corner points (meters).
+    Builds dictionary of sections of track.
 
-    Each arg (e.g., L1) must be a dict with keys:
-      "P_UL", "P_UR", "P_LL", "P_LR"
+    Returns:
+        dict{dict: (float, float)}
     """
-    def make(name: str, d: Dict[str, Pt]) -> Section:
-        return Section(
-            name=name,
-            P_UL=d["P_UL"],
-            P_UR=d["P_UR"],
-            P_LL=d["P_LL"],
-            P_LR=d["P_LR"],
-        )
 
-    return [
-        make("L1", L1),
-        make("T1", T1),
-        make("S1", S1),
-        make("T2", T2),
-        make("L2", L2),
-        make("T3", T3),
-        make("S2", S2),
-        make("T4", T4),
-    ]
+    # -----------------------------
+    # Original points (meters)
+    # -----------------------------
+    sections = {
+        "T1": {
+            "P_LL": (-0.21152, 5.71897),
+            "P_LR": ( 0.40079, 5.71897),
+            "P_UL": (-1.1005, 6.57861),
+            "P_UR": (-1.1005, 7.185155),
+        },
+        "T2": {
+            "P_LL": (-3.532365, 6.57861),
+            "P_LR": (-3.532365, 7.185155),
+            "P_UL": (-4.558515, 5.71897),
+            "P_UR": (-5.16854, 5.71897),
+        },
+        "T3": {
+            "P_LL": (-4.558515, 0.22063),
+            "P_LR": (-5.16854, 0.22063),
+            "P_UL": (-3.532365, -0.801585),
+            "P_UR": (-3.532365, -1.41194),
+        },
+        "T4": {
+            "P_LL": (-1.1005, -0.801585),
+            "P_LR": (-1.1005, -1.41194),
+            "P_UL": (-0.21152, 0.22063),
+            "P_UR": (0.40079, 0.22063),
+        },
+        "L1": {
+            "P_LL": (-0.21152, 0.22063),
+            "P_LR": ( 0.40079, 0.22063),
+            "P_UL": (-0.21152, 5.71897),
+            "P_UR": ( 0.40079, 5.71897),
+        },
+        "L2": {
+            "P_LL": (-4.55749, 5.71897),
+            "P_LR": (-5.16854,  5.71897),
+            "P_UL": (-4.55749, 0.22063),
+            "P_UR": (-5.16854,  0.22063),
+        },
+        "S1": {
+            "P_LL": (-1.1005, 6.57861),
+            "P_LR": (-1.1005, 7.185155),
+            "P_UL": (-3.53177, 6.57861),
+            "P_UR": (-3.53177, 7.185155),
+        },
+        "S2": {
+            "P_LL": (-3.532365, -0.801585),
+            "P_LR": (-3.532365, -1.41194),
+            "P_UL": (-1.1005,  -0.801585),
+            "P_UR": (-1.1005,  -1.41194),
+        },
+    }
+
+    return sections
 
 # -----------------------------
 # Geometry helpers
 # -----------------------------
+
+def transform(pt):
+    """
+    Coordinate transform
+        old: x down, y right
+        new: x right, y up
+    """
+    x_old, y_old = pt
+    x_new = y_old
+    y_new = -x_old
+    return (x_new, y_new)
+
+
 def _dist_point_to_segment(p, a, b) -> float:
     """Euclidean distance from point p to line segment a-b."""
-    p = np.asarray(p, float); a = np.asarray(a, float); b = np.asarray(b, float)
+    
+    p = np.asarray(p, float)
+    a = np.asarray(a, float)
+    b = np.asarray(b, float)
+
     ab = b - a
-    denom = float(np.dot(ab, ab))
-    if denom == 0.0:
-        return float(np.linalg.norm(p - a))
-    t = float(np.dot(p - a, ab) / denom)
-    t = max(0.0, min(1.0, t))
-    proj = a + t * ab
-    return float(np.linalg.norm(p - proj))
+    ab_unit_v = ab/np.linalg.norm(ab)
+    proj = np.dot(p - a, ab_unit_v)*ab_unit_v
+    
+    return float(np.linalg.norm(p - a - proj))
 
-def _angle_wrap(a):
-    return (a + np.pi) % (2.0 * np.pi) - np.pi
-
-def _is_angle_between(theta, a0, a1, ccw=True) -> bool:
+def _dist_point_to_arc(P, C, r) -> float:
     """
-    Check if theta lies on arc from a0 to a1 (inclusive).
-    If ccw=True: arc follows CCW direction from a0 to a1.
+    Finds the point on the arc that is closest to P.
+
+    Args:
+        P (_type_): _description_
+        C (_type_): _description_
+        r (_type_): _description_
+
+    Returns:
+        float: _description_
     """
-    theta = _angle_wrap(theta); a0 = _angle_wrap(a0); a1 = _angle_wrap(a1)
 
-    if ccw:
-        # shift so a0 is 0
-        d1 = (a1 - a0) % (2*np.pi)
-        dt = (theta - a0) % (2*np.pi)
-        return dt <= d1 + 1e-12
-    else:
-        d1 = (a0 - a1) % (2*np.pi)
-        dt = (a0 - theta) % (2*np.pi)
-        return dt <= d1 + 1e-12
+    P = np.array(P) # Point vector
+    C = np.array(C) # Center-of-arc vector
 
-def _dist_point_to_arc(p, c, r, ang0, ang1, ccw=True) -> float:
+    P_center_to_point = P - C # Vector from arc center to point
+
+    R = r * (P_center_to_point/np.linalg.norm(P_center_to_point)) # Arc radius vector
+
+    D = R - P_center_to_point # Distance vector.
+
+    return np.linalg.norm(D)
+
+
+def point_in_poly(pt, poly):
     """
-    Distance from point p to circular arc centered at c with radius r,
-    spanning ang0->ang1 (radians) in CCW or CW direction.
+    Ray-casting point-in-polygon.
+    pt: (x,y)
+    poly: list of (x,y) in order (clockwise or ccw)
+    Returns True if inside or on edge.
     """
-    p = np.asarray(p, float); c = np.asarray(c, float)
-    v = p - c
-    if np.allclose(v, 0.0):
-        # Point at center: closest point is any point on circle
-        return float(abs(r))
-
-    theta = float(np.arctan2(v[1], v[0]))
-    # candidate closest point: radial projection onto circle
-    if _is_angle_between(theta, ang0, ang1, ccw=ccw):
-        return float(abs(np.linalg.norm(v) - r))
-
-    # otherwise closest is one of the endpoints
-    e0 = c + r * np.array([np.cos(ang0), np.sin(ang0)])
-    e1 = c + r * np.array([np.cos(ang1), np.sin(ang1)])
-    return float(min(np.linalg.norm(p - e0), np.linalg.norm(p - e1)))
-
-def _point_in_poly(p, poly) -> bool:
-    """Ray-casting point-in-polygon for a simple polygon."""
-    x, y = float(p[0]), float(p[1])
+    x, y = float(pt[0]), float(pt[1])
     inside = False
     n = len(poly)
+
     for i in range(n):
         x0, y0 = poly[i]
         x1, y1 = poly[(i + 1) % n]
-        # edge crosses horizontal ray?
-        if ((y0 > y) != (y1 > y)):
+
+        # On-edge check (with tolerance)
+        dx, dy = x1 - x0, y1 - y0
+        px, py = x - x0, y - y0
+        cross = dx * py - dy * px
+        if abs(cross) < 1e-12:
+            dot = px * dx + py * dy
+            if -1e-12 <= dot <= (dx*dx + dy*dy) + 1e-12:
+                return True
+
+        # Ray cast
+        if (y0 > y) != (y1 > y):
             xinters = (x1 - x0) * (y - y0) / (y1 - y0 + 1e-18) + x0
-            if x < xinters:
+            if x <= xinters:
                 inside = not inside
+
     return inside
 
-# -----------------------------
-# Main API
-# -----------------------------
-def distance_from_right_lane_boundary(xy_m, sections) -> float:
+def section_polygon(sec):
     """
-    Compute distance (in inches) from the vehicle position to the *right* lane boundary.
-
-    You provide `sections` describing your track split into 6 parts:
-      - 2 long straights
-      - 2 short straights
-      - 4 turns
-
-    Each section is a dict with:
-      - "poly": list[(x,y)] polygon corners (meters) describing the lane *area* for that section
-      - "right": one of:
-           {"type":"line", "a":(x,y), "b":(x,y)}                     # right boundary is a segment
-           {"type":"arc",  "c":(x,y), "r":R, "ang0":a0, "ang1":a1,
-                         "ccw":True/False}                           # right boundary is an arc
-
-    The function:
-      1) finds which section polygon contains the point,
-      2) measures perpendicular distance to that section’s right boundary,
-      3) returns inches.
-
-    If the point is not inside any section polygon, it falls back to the minimum
-    distance to any section's right boundary.
+    Build a consistent quad polygon from your corner naming.
+    Order: UL -> UR -> LR -> LL
     """
-    p = np.asarray(xy_m, float)
+    return [sec["P_UL"], sec["P_UR"], sec["P_LR"], sec["P_LL"]]
 
-    # first try: pick the section that contains the point
-    for sec in sections:
-        if _point_in_poly(p, sec["poly"]):
-            rb = sec["right"]
-            if rb["type"] == "line":
-                d_m = _dist_point_to_segment(p, rb["a"], rb["b"])
-            elif rb["type"] == "arc":
-                d_m = _dist_point_to_arc(p, rb["c"], rb["r"], rb["ang0"], rb["ang1"], ccw=rb.get("ccw", True))
-            else:
-                raise ValueError(f"Unknown right boundary type: {rb['type']}")
-            return d_m * M_TO_IN
 
-    # fallback: min distance to any right boundary
-    best = float("inf")
-    for sec in sections:
-        rb = sec["right"]
-        if rb["type"] == "line":
-            best = min(best, _dist_point_to_segment(p, rb["a"], rb["b"]))
-        elif rb["type"] == "arc":
-            best = min(best, _dist_point_to_arc(p, rb["c"], rb["r"], rb["ang0"], rb["ang1"], ccw=rb.get("ccw", True)))
-    return best * M_TO_IN
+def find_section(pt, sections):
+    """
+    pt: (x,y)
+    sections: your dict {"T1": {"P_LL":..., ...}, ...}
+
+    Returns: section name (e.g., "L1") or None if not found.
+
+    Note: some points near boundaries may belong to multiple quads.
+          We resolve by checking turns first (T*), then straights.
+    """
+    # Priority: turns first, then straights (tweak if you want)
+    order = ["T1", "T2", "T3", "T4", "L1", "L2", "S1", "S2"]
+    for name in order:
+        poly = section_polygon(sections[name])
+        if point_in_poly(pt, poly):
+            return name
+    return None
+
+sections_dict = get_track_sections_dict()
+
+sections_tf = {}
+for name, pts in sections_dict.items():
+    sections_tf[name] = {k: transform(v) for k, v in pts.items()}
+
+print(find_section((3.75, -0.06), sections_tf)) # L1
+print(find_section((6.67, 0.86), sections_tf)) # T1
+print(find_section((6.68, 3.08), sections_tf)) # S1
+print(find_section((6.71, 4.40), sections_tf)) # T2
+print(find_section((1.68, 5.11), sections_tf)) # L2
+print(find_section((-0.83, 4.02), sections_tf)) # T3
+print(find_section((-1.34, 3.26), sections_tf)) # S2
+print(find_section((-0.84, 0.36), sections_tf)) # T4
+
+
+
+
+
+

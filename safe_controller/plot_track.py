@@ -1,71 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib.patches import Arc
 import numpy as np
-
-# -----------------------------
-# Original points (meters)
-# -----------------------------
-sections = {
-    "T1": {
-        "P_LL": (-0.21152, 5.71897),
-        "P_LR": ( 0.40079, 5.71897),
-        "P_UL": (-1.1005, 6.57861),
-        "P_UR": (-1.1005, 7.185155),
-    },
-    "T2": {
-        "P_LL": (-3.532365, 6.57861),
-        "P_LR": (-3.532365, 7.185155),
-        "P_UL": (-4.558515, 5.71897),
-        "P_UR": (-5.16854, 5.71897),
-    },
-    "T3": {
-        "P_LL": (-4.558515, 0.22063),
-        "P_LR": (-5.16854, 0.22063),
-        "P_UL": (-3.532365, -0.801585),
-        "P_UR": (-3.532365, -1.41194),
-    },
-    "T4": {
-        "P_LL": (-1.1005, -0.801585),
-        "P_LR": (-1.1005, -1.41194),
-        "P_UL": (-0.21152, 0.22063),
-        "P_UR": (0.40079, 0.22063),
-    },
-    "L1": {
-        "P_LL": (-0.21152, 0.22063),
-        "P_LR": ( 0.40079, 0.22063),
-        "P_UL": (-0.21152, 5.71897),
-        "P_UR": ( 0.40079, 5.71897),
-    },
-    "L2": {
-        "P_LL": (-4.55749, 5.71897),
-        "P_LR": (-5.16854,  5.71897),
-        "P_UL": (-4.55749, 0.22063),
-        "P_UR": (-5.16854,  0.22063),
-    },
-    "S1": {
-        "P_LL": (-1.1005, 6.57861),
-        "P_LR": (-1.1005, 7.185155),
-        "P_UL": (-3.53177, 6.57861),
-        "P_UR": (-3.53177, 7.185155),
-    },
-    "S2": {
-        "P_LL": (-3.532365, -0.801585),
-        "P_LR": (-3.532365, -1.41194),
-        "P_UL": (-1.1005,  -0.801585),
-        "P_UR": (-1.1005,  -1.41194),
-    },
-}
-
-# -----------------------------
-# Coordinate transform
-# old: x down, y right
-# new: x right, y up
-# -----------------------------
-def transform(pt):
-    x_old, y_old = pt
-    x_new = y_old
-    y_new = -x_old
-    return (x_new, y_new)
+from gt_to_lane import get_track_sections_dict, transform
 
 def dist(p1, p2):
     return np.linalg.norm(np.array(p1) - np.array(p2))
@@ -124,6 +60,7 @@ def get_turn_arc(turn_dict, angles):
 
     return inner_arc, outer_arc
 
+sections = get_track_sections_dict()
 
 # apply transform
 sections_tf = {}
@@ -159,6 +96,20 @@ for turn, angles in zip(["T1", "T2", "T3", "T4"], [(-90, 0), (0, 90), (90, 180),
     T_inner_arc, T_outer_arc = get_turn_arc(sections_tf[turn], angles)
     ax.add_patch(T_inner_arc)
     ax.add_patch(T_outer_arc)
+
+pts = []
+
+def onclick(event):
+    if event.inaxes:
+        pts.append((event.xdata, event.ydata))
+        print(f"Clicked: {event.xdata:.3f}, {event.ydata:.3f}")
+
+        if len(pts) >= 2:
+            p1, p2 = pts[-2], pts[-1]
+            d = np.hypot(p2[0]-p1[0], p2[1]-p1[1])
+            print(f"Distance = {d:.4f}")
+
+cid = fig.canvas.mpl_connect("button_press_event", onclick)
 
 plt.axis("equal")
 plt.xlabel("X (right, m)")
