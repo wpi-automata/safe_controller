@@ -32,23 +32,25 @@ class Stepper():
         # Estimator Initialization
         scale_factor = wall_y # m (value used for normalization: y_normalized = y_true/scale_factor)
         h = lambda x: jnp.array([x[0]/(scale_factor)])
-        self.estimator = GEKF(self.dynamics, mu_u, sigma_u, mu_v, sigma_v,
+        # self.estimator = GEKF(self.dynamics, mu_u, sigma_u, mu_v, sigma_v,
+        #                       h=h,
+        #                       x_init=x_initial_measurement,
+        #                       Q=jnp.array([[1.0, 0.0,   0.0],
+        #                                    [0.0,  0.001, 0.0],
+        #                                    [0.0,  0.0,   0.001]]),
+        #                       P_init=P_init)
+        self.estimator = EKF(self.dynamics, 
                               h=h,
-                              x_init=x_initial_measurement,
                               Q=jnp.array([[1.0, 0.0,   0.0],
                                            [0.0,  0.001, 0.0],
                                            [0.0,  0.0,   0.001]]),
-                              P_init=P_init)
-        # self.estimator = EKF(self.dynamics, 
-        #                       h=h,
-        #                       Q=Q,
-        #                       x_init=x_initial_measurement,
-        #                       P_init=P_init,
-        #                       R=10000*jnp.square(sigma_v)*jnp.eye(self.dynamics.state_dim))
+                              x_init=x_initial_measurement,
+                              P_init=P_init,
+                              R=100*jnp.square(sigma_v)*jnp.eye(self.dynamics.state_dim))
 
         self.x_estimated, self.p_estimated = self.estimator.get_belief()
 
-        safety_offset = 4.0 # in inches, accounts for width of deepracer
+        safety_offset = 5.0 # in inches, accounts for width of deepracer
 
         # Right CBF (y > 0)
         n = self.dynamics.state_dim
