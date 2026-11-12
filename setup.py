@@ -23,7 +23,9 @@ setup(
             'teleop = safe_controller.teleop:main',
             'control = safe_controller.control:main',
             'control_lane = safe_controller.control_lane:main',
-            'spoofer = safe_controller.spoofer:main'
+            'spoofer = safe_controller.spoofer:main',
+            'clauded = safe_controller.clauded:main',
+            'plot_cbf_debug = safe_controller.plot_cbf_debug:main'
         ],
     },
 )
