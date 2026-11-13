@@ -49,6 +49,18 @@ Key parameters: `control_rate_hz` (50), `forward_speed` (0.25), `k_p` (3.0), `p_
   `[p, p_hat, p_hat_std, h1, h2, y_hat, v_hat, theta_hat, v_desired, omega_desired, v_safe, omega_safe, omega_lower, omega_upper, cbf_active, qp_status]`
   (`h1 = p_hat - p_min`, `h2 = p_max - p_hat`; `omega_lower/upper` is the admissible omega given `v_safe`; `qp_status` 1 = solved)
 
+### occluder
+Relays the camera stream and blanks one side of the image (`width_frac` of the width, default 35%) for a single window, to test the pipeline under a momentary occlusion. The window is timed from the **first image received**, i.e. when you press Play in Isaac. It publishes `/occlusion/state` (`std_msgs/Int8`: 0 = none, 1 = left, 2 = right), which `plot_cbf_debug` shades as a hatched band.
+
+```bash
+ros2 run safe_controller occluder --ros-args -p side:=right -p start_s:=10.0 -p duration_s:=5.0
+ros2 run lane_pos_pipeline image_sub --ros-args -r /rgb:=/rgb_occluded   # network reads the occluded stream
+ros2 run safe_controller clauded
+ros2 bag record /lane_keeping/cbf_debug /lane_position /cmd_vel /occlusion/state /tf /gray_pub -o occl_right_5s   # /gray_pub = occluded frame the network saw
+ros2 run rqt_image_view rqt_image_view /rgb_occluded   # optional: check the mask covers the lane edge
+```
+Parameters: `side` (left/right), `start_s` (10), `duration_s` (5), `width_frac` (0.35), `fill` (0 = black), `input_topic` (`/rgb`), `output_topic` (`/rgb_occluded`). Restart it before each run, since the window fires once per launch.
+
 ## Scripts (NOT ROS NODES!)
 
 ### plot_debug

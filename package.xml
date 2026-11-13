@@ -9,7 +9,13 @@
 
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
+  <!-- Float32 (/lane_position), Float64MultiArray (/lane_keeping/cbf_debug),
+       Int8 (/occlusion/state): clauded.py, occluder.py -->
   <depend>std_msgs</depend>
+  <!-- sensor_msgs/Image: occluder.py subscribes to /rgb and publishes /rgb_occluded -->
+  <depend>sensor_msgs</depend>
+  <!-- Converts sensor_msgs/Image <-> numpy arrays so occluder.py can mask pixels -->
+  <depend>cv_bridge</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

@@ -56,6 +56,7 @@ C_ACTIVE = "#fab219"   # CBF-active spans
 C_VIOLATION = "#d03b3b"
 C_INK = "#52514e"
 C_MEAS = "#9a9992"     # raw measurement
+C_OCCL = "#6250d6"     # camera occlusion window (hatched)
 
 
 # ----------------------------------------------------------------------------
@@ -70,11 +71,15 @@ def detect_storage_id(bag_path):
     return "sqlite3"
 
 
+OCCLUSION_TOPIC = "/occlusion/state"   # published by occluder.py (0 none, 1 left, 2 right)
+
+
 def read_cbf_debug(bag_path, topic):
-    """Return (t [s, bag receive time, absolute], data [N x n], labels)."""
+    """Return (t [s, bag receive time, absolute], data [N x n], labels,
+    occlusion (t_abs [K], state [K]) or None)."""
     import rosbag2_py
     from rclpy.serialization import deserialize_message
-    from std_msgs.msg import Float64MultiArray
+    from std_msgs.msg import Float64MultiArray, Int8
 
     reader = rosbag2_py.SequentialReader()
     reader.open(
@@ -89,11 +94,18 @@ def read_cbf_debug(bag_path, topic):
             + "\n  ".join(f"{k} [{v}]" for k, v in sorted(available.items()))
         )
 
-    reader.set_filter(rosbag2_py.StorageFilter(topics=[topic]))
+    has_occl = OCCLUSION_TOPIC in available
+    reader.set_filter(rosbag2_py.StorageFilter(
+        topics=[topic] + ([OCCLUSION_TOPIC] if has_occl else [])))
 
     times, rows, skipped, labels = [], [], 0, None
+    occl_t, occl_s = [], []
     while reader.has_next():
-        _, raw, t_ns = reader.read_next()
+        name, raw, t_ns = reader.read_next()
+        if name == OCCLUSION_TOPIC:
+            occl_t.append(t_ns * 1e-9)
+            occl_s.append(deserialize_message(raw, Int8).data)
+            continue
         msg = deserialize_message(raw, Float64MultiArray)
         n = len(msg.data)
         if labels is None and n in LAYOUTS:
@@ -114,7 +126,24 @@ def read_cbf_debug(bag_path, topic):
     t = np.asarray(times)
     data = np.asarray(rows, dtype=float)
     order = np.argsort(t)
-    return t[order], data[order], labels
+
+    occlusion = None
+    if occl_t:
+        o = np.argsort(occl_t)
+        occlusion = (np.asarray(occl_t)[o], np.asarray(occl_s, dtype=int)[o])
+    return t[order], data[order], labels, occlusion
+
+
+def occlusion_spans(occlusion, t0):
+    """[(start, end, side_name)] in seconds relative to t0."""
+    if occlusion is None:
+        return []
+    ot, os_ = occlusion
+    spans = []
+    for side, name in ((1, "left"), (2, "right")):
+        for a, b in true_spans(ot - t0, os_ == side):
+            spans.append((a, b, name))
+    return sorted(spans)
 
 
 # ----------------------------------------------------------------------------
@@ -215,7 +244,7 @@ def top_legend(ax, ncol):
               frameon=False, borderaxespad=0.2, ncol=ncol)
 
 
-def plot(t, d, labels, title):
+def plot(t, d, labels, title, occl_spans=()):
     import matplotlib.pyplot as plt
     from matplotlib.patches import Patch
 
@@ -248,6 +277,14 @@ def plot(t, d, labels, title):
             ax.axvspan(a, b, color=C_ACTIVE, alpha=0.18, linewidth=0)
         for a, b in true_spans(t, violation):
             ax.axvspan(a, b, color=C_VIOLATION, alpha=0.15, linewidth=0)
+        for a, b, _ in occl_spans:
+            ax.axvspan(a, b, facecolor="none", edgecolor=C_OCCL, hatch="///",
+                       linewidth=0, alpha=0.6)
+            ax.axvline(a, color=C_OCCL, linewidth=1)
+            ax.axvline(b, color=C_OCCL, linewidth=1)
+    for a, b, side in occl_spans:
+        axes[0].text(0.5 * (a + b), 1.0, f"{side} occluded", color=C_OCCL, fontsize=8,
+                     ha="center", va="top", transform=axes[0].get_xaxis_transform())
 
     # 1. Lane position
     ax_p.axhspan(p_min, p_max, color=C_SAFE_BAND, alpha=0.6, linewidth=0,
@@ -305,11 +342,11 @@ def plot(t, d, labels, title):
 
     axes[-1].set_xlabel("time  [s]", color=C_INK)
 
-    fig.legend(
-        handles=[Patch(color=C_ACTIVE, alpha=0.4, label="CBF modifying command"),
-                 Patch(color=C_VIOLATION, alpha=0.3, label="margin < 0")],
-        loc="upper right", fontsize=9, frameon=False, ncol=2,
-    )
+    handles = [Patch(color=C_ACTIVE, alpha=0.4, label="CBF modifying command"),
+               Patch(color=C_VIOLATION, alpha=0.3, label="margin < 0")]
+    if occl_spans:
+        handles.append(Patch(facecolor="none", edgecolor=C_OCCL, hatch="///", label="camera occluded"))
+    fig.legend(handles=handles, loc="upper right", fontsize=9, frameon=False, ncol=len(handles))
     fig.suptitle(title, x=0.01, ha="left", fontsize=12, color="#0b0b0b")
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     return fig
@@ -331,8 +368,15 @@ def main():
         import matplotlib
         matplotlib.use("Agg")
 
-    t_abs, data, labels = read_cbf_debug(args.bag, args.topic)
+    t_abs, data, labels, occlusion = read_cbf_debug(args.bag, args.topic)
     t = t_abs - t_abs[0]
+    occl = occlusion_spans(occlusion, t_abs[0])
+    for a, b, side in occl:
+        print(f"Occlusion ({side}): {a:.2f} s -> {b:.2f} s  ({b - a:.2f} s)")
+    if args.t0 is not None or args.t1 is not None:
+        lo = args.t0 if args.t0 is not None else -np.inf
+        hi = args.t1 if args.t1 is not None else np.inf
+        occl = [(max(a, lo), min(b, hi), s) for a, b, s in occl if b > lo and a < hi]
 
     mask = np.ones_like(t, dtype=bool)
     if args.t0 is not None:
@@ -352,7 +396,8 @@ def main():
 
     t_plot, d_plot = break_gaps(t, data)
     fig = plot(t_plot, d_plot, labels,
-               title=f"Lane-keeping CBF — {os.path.basename(os.path.normpath(args.bag))}")
+               title=f"Lane-keeping CBF — {os.path.basename(os.path.normpath(args.bag))}",
+               occl_spans=occl)
 
     if args.output:
         fig.savefig(args.output, dpi=150)
